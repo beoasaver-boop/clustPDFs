@@ -2,7 +2,7 @@
 
 Un análisis avanzado de clustering para documentos PDF utilizando procesamiento de texto y algoritmo K-Means con optimizaciones de rendimiento.
 
-## 📋 Descripción
+## Descripción
 
 Este proyecto permite:
 - Extraer texto de múltiples PDFs en paralelo
@@ -10,38 +10,70 @@ Este proyecto permite:
 - Aplicar clustering K-Means para clasificar PDFs por similaridad
 - Generar análisis estadísticos y visualizaciones
 - Exportar resultados a Excel
+- **✨ NUEVO: Soporta colecciones pequeñas de PDFs (mínimo 1 PDF)**
 
-## 🚀 Características
+## Características
 
 ✅ **Extracción paralela** - Procesa múltiples PDFs simultáneamente  
 ✅ **Manejo robusto de errores** - PDFs dañados no rompen el proceso  
 ✅ **Análisis automático** - Estadísticas, palabras clave y métricas de calidad  
 ✅ **Visualizaciones** - Gráficos de distribución y proporciones  
 ✅ **Exportación** - Resultados en Excel con múltiples hojas  
+✅ **Soporte para pequeñas colecciones** - Clustering con 1 o más PDFs  
+✅ **Parámetros adaptativos** - Configuración automática según número de documentos  
 
-## 📦 Instalación
+## Instalación
 
 ```bash
 pip install PyPDF2 pandas scikit-learn pdfplumber matplotlib seaborn openpyxl requests plotly
 ```
 
-## 💻 Uso
+##  Uso
 
 ```bash
 python cluster_kmeans_pdf.py
 ```
 
 El script solicitará:
-1. Ruta de la carpeta con PDFs
-2. Número de clusters deseados (default: 3)
+1. **Ruta de la carpeta con PDFs** - Especifica la ruta absoluta o relativa
+2. **Número de clusters** (opcional) - Default automático basado en cantidad de PDFs
 
-## 📊 Funciones Principales
+### Ejemplos de uso
+
+**Con 1 PDF:**
+- Se crea automáticamente 1 cluster
+- Útil para análisis de contenido o extracción de información
+
+**Con 2-4 PDFs:**
+- Default: 1-2 clusters
+- Parámetros de vectorización ajustados para colecciones pequeñas
+
+**Con 5+ PDFs:**
+- Default: 3 clusters
+- Parámetros estándar de vectorización
+
+## Funciones Principales
 
 ### `extract_text_from_pdfs(folder_path, use_parallel=True, max_workers=4)`
 Extrae texto de todos los PDFs de una carpeta con procesamiento paralelo.
+- Soporta 1 o más PDFs
+- Maneja errores sin interrumpir el proceso
 
-### `process_and_cluster_pdfs(folder_path, n_clusters=5, use_parallel=True)`
+### `process_and_cluster_pdfs(folder_path, n_clusters=None, use_parallel=True)`
 Pipeline completo: extracción → vectorización → clustering.
+- Auto-ajusta n_clusters si es inválido o excede cantidad de PDFs
+- Valida parámetros según cantidad de documentos
+
+### `validate_clustering_inputs(num_pdfs, n_clusters)`
+Valida y ajusta parámetros de clustering para colecciones pequeñas.
+- Retorna n_clusters válido
+- Gestiona casos especiales (1 PDF, etc.)
+
+### `get_optimal_vectorizer_params(num_pdfs)`
+Retorna parámetros TfidfVectorizer optimizados para el número de documentos.
+- Para 1 PDF: min_df=1, max_df=1.0
+- Para 2-4 PDFs: min_df=1, max_df=0.95
+- Para 5+ PDFs: min_df=2, max_df=0.8
 
 ### `get_cluster_stats(df_clusters)`
 Retorna cantidad y porcentaje de PDFs por cluster.
@@ -64,7 +96,7 @@ Gráfico pastel mostrando proporciones de cada cluster.
 ### `get_cluster_summary(df_clusters, keywords_dict)`
 Resumen conciso con documentos y palabras clave por cluster.
 
-## 📈 Salida
+## Salida
 
 El programa genera:
 - **Estadísticas de clustering** - Cantidad y porcentaje por cluster
@@ -75,18 +107,18 @@ El programa genera:
 - **Archivo Excel** (`cluster_results.xlsx`) con múltiples hojas
 - **Visualizaciones** - Gráficos de distribución y proporciones
 
-## ⚙️ Parámetros Configurables
+## Parámetros Configurables
 
-| Parámetro | Default | Descripción |
-|-----------|---------|-------------|
-| `n_clusters` | 5 | Número de clusters K-Means |
-| `use_parallel` | True | Activar procesamiento paralelo |
-| `max_workers` | 4 | Número máximo de workers en paralelo |
-| `max_features` | 1000 | Máximo número de features TF-IDF |
-| `max_df` | 0.8 | Máximo documento frequency |
-| `min_df` | 2 | Mínimo documento frequency |
+| Parámetro      | Default | Descripción                          |
+|----------------|---------|--------------------------------------|
+| `n_clusters`   | 5       | Número de clusters K-Means           |
+| `use_parallel` | True    | Activar procesamiento paralelo       |
+| `max_workers`  | 4       | Número máximo de workers en paralelo |
+| `max_features` | 1000    | Máximo número de features TF-IDF     |
+| `max_df`       | 0.8     | Máximo documento frequency           |
+| `min_df`       | 2       | Mínimo documento frequency           |
 
-## 🔧 Optimizaciones
+##  Optimizaciones
 
 - **pdfplumber** en lugar de PyPDF2 para extracción más rápida
 - **ThreadPoolExecutor** para procesamiento paralelo
@@ -95,7 +127,7 @@ El programa genera:
 - **Escalado StandardScaler** para mejor convergencia K-Means
 - **n_init=10** para mejor exploración de soluciones
 
-## 📝 Ejemplo de Flujo
+##  Ejemplo de Flujo
 
 ```python
 # 1. Extrae PDFs
@@ -119,7 +151,7 @@ export_results(df_clusters, stats, keywords)
 plot_cluster_distribution(df_clusters)
 ```
 
-## 🐛 Manejo de Errores
+##  Manejo de Errores
 
 El programa:
 - Valida existencia de carpeta y PDFs
@@ -127,18 +159,18 @@ El programa:
 - Filtra documentos vacíos automáticamente
 - Verifica que haya al menos 1 PDF para procesar
 
-## 📋 Requisitos
+##  Requisitos
 
 - Python 3.7+
 - Librerías especificadas en `pip install`
 
-## 📄 Licencia
+##  Licencia
 
-Este proyecto es de código abierto.
+Este proyecto es de código abierto y no requiere de licencia alguna.
 
-## 👤 Autor
+##  Autor
 
-Proyecto de análisis de clustering para documentos PDF.
+No se requiere dar crédito al autor.
 
 ---
 

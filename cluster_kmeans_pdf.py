@@ -14,6 +14,46 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from numpy import mean
 
+def validate_clustering_inputs(num_pdfs, n_clusters):
+    """Validate and adjust clustering inputs for small collections.
+    
+    Args:
+        num_pdfs: Number of PDF documents
+        n_clusters: Requested number of clusters
+    
+    Returns:
+        Adjusted n_clusters value valid for the number of PDFs
+    """
+    if num_pdfs < 1:
+        raise ValueError("At least 1 PDF is required for clustering")
+    
+    if n_clusters is None or n_clusters < 1:
+        n_clusters = min(3, num_pdfs)
+    elif n_clusters > num_pdfs:
+        print(f"⚠️  Warning: Cannot create {n_clusters} clusters from {num_pdfs} PDF(s)")
+        n_clusters = num_pdfs
+        print(f"   Adjusted to {n_clusters} cluster(s)")
+    
+    return n_clusters
+
+
+def get_optimal_vectorizer_params(num_pdfs):
+    """Get optimal TfidfVectorizer parameters based on number of documents.
+    
+    Args:
+        num_pdfs: Number of PDF documents
+    
+    Returns:
+        Dictionary with vectorizer parameters
+    """
+    if num_pdfs == 1:
+        return {'min_df': 1, 'max_df': 1.0}
+    elif num_pdfs < 5:
+        return {'min_df': 1, 'max_df': 0.95}
+    else:
+        return {'min_df': 2, 'max_df': 0.8}
+
+
 def extract_text_from_single_pdf(file_path):
     """Extract text from a PDF. Optimized with pdfplumber."""
     try:
@@ -26,13 +66,15 @@ def extract_text_from_single_pdf(file_path):
         return None
 
 def extract_text_from_pdfs(folder_path, use_parallel=True, max_workers=4):
-    #Extract text from PDFs
+    """Extract text from PDFs. Supports small collections (minimum 1 PDF)."""
 
     pdf_files = list(Path(folder_path).glob('*.pdf'))
     
     if not pdf_files:
         print("No PDF files found in the specified folder.")
         return []
+    
+    print(f"✓ Found {len(pdf_files)} PDF file(s)")
     
     if use_parallel and len(pdf_files) > 1:
         texts = []
@@ -48,21 +90,53 @@ def extract_text_from_pdfs(folder_path, use_parallel=True, max_workers=4):
     
     return texts
 
-def process_and_cluster_pdfs(folder_path, n_clusters=5, use_parallel=True):
+def process_and_cluster_pdfs(folder_path, n_clusters=None, use_parallel=True):
+    """Process and cluster PDFs with support for small collections (minimum 1 PDF).
+    
+    Args:
+        folder_path: Path to folder with PDFs
+        n_clusters: Number of clusters (auto-determined if None or invalid)
+        use_parallel: Whether to use parallel processing
+    
+    Returns:
+        DataFrame with clustered texts or empty DataFrame if no PDFs found
+    """
     # Step 1: Extract text from PDFs (optimized)
     texts = extract_text_from_pdfs(folder_path, use_parallel=use_parallel)
     
     if not texts:
-        print("No PDF files found in the specified folder.")
+        print("❌ No PDF files found in the specified folder.")
         return pd.DataFrame()
-
+    
+    num_pdfs = len(texts)
+    print(f"\n📄 Processing {num_pdfs} PDF(s)...")
+    
+    # Validate and adjust n_clusters for small collections
+    if n_clusters is None or n_clusters < 1:
+        n_clusters = min(3, num_pdfs)  # Default to 3, but max is num_pdfs
+    elif n_clusters > num_pdfs:
+        print(f"⚠️  Warning: n_clusters ({n_clusters}) cannot exceed number of PDFs ({num_pdfs})")
+        n_clusters = num_pdfs
+        print(f"   Adjusted n_clusters to {n_clusters}")
+    
+    # Dynamically adjust min_df based on number of documents
+    # For single PDF: min_df=1, for small collections: min_df=1, for larger: min_df=2
+    min_df = 1 if num_pdfs < 5 else 2
+    max_df = 0.9 if num_pdfs < 5 else 0.8
+    
     vectorizer = TfidfVectorizer(
         stop_words='english', 
-        max_df=0.8, 
-        min_df=2,
+        max_df=max_df, 
+        min_df=min_df,
         max_features=1000  # limiting features for better performance
     )
-    X_tfidf = vectorizer.fit_transform(texts)
+    
+    try:
+        X_tfidf = vectorizer.fit_transform(texts)
+    except ValueError as e:
+        print(f"❌ Error during vectorization: {e}")
+        print("   This might be due to insufficient text or vocabulary.")
+        return pd.DataFrame()
 
     # Data scaling (important for K-Means)
     scaler = StandardScaler(with_mean=False)
@@ -74,6 +148,8 @@ def process_and_cluster_pdfs(folder_path, n_clusters=5, use_parallel=True):
         'text': texts,
         'cluster': kmeans.fit_predict(X_scaled),
     })
+    
+    print(f"✓ Clustering complete: {n_clusters} cluster(s) created")
 
     return df_clusters
 
@@ -104,9 +180,15 @@ def get_top_keywords_per_cluster(texts, clusters, vectorizer, n_keywords=5):
 
 
 def evaluate_clustering(X_scaled, clusters, vectorizer):
+    # Convert sparse matrix to dense array for sklearn metrics
+    if hasattr(X_scaled, 'toarray'):
+        X_dense = X_scaled.toarray()
+    else:
+        X_dense = X_scaled
+    
     # Quality metrics for clustering: Silhouette Score and Davies-Bouldin Index
-    silhouette = silhouette_score(X_scaled, clusters)
-    davies_bouldin = davies_bouldin_score(X_scaled, clusters)
+    silhouette = silhouette_score(X_dense, clusters)
+    davies_bouldin = davies_bouldin_score(X_dense, clusters)
     
     metrics = {
         'silhouette_score': round(silhouette, 4),
@@ -161,25 +243,58 @@ def get_cluster_summary(df_clusters, keywords_dict):
 
 
 if __name__ == "__main__":
-    folder_path_to_pdfs = input("Insert the path to the folder containing the PDFs: ")
-    n_clusters = int(input("NNumber of clusters (default 3): ") or 3)
+    print("="*60)
+    print("PDF CLUSTERING WITH K-MEANS")
+    print("Supports small collections (minimum 1 PDF)")
+    print("="*60 + "\n")
+    
+    folder_path_to_pdfs = input("Insert the path to the folder containing the PDFs: ").strip()
+    
+    # Validate folder path
+    if not os.path.isdir(folder_path_to_pdfs):
+        print(f"❌ Error: Folder '{folder_path_to_pdfs}' does not exist.")
+        exit(1)
+    
+    # Get number of PDFs
+    pdf_files = list(Path(folder_path_to_pdfs).glob('*.pdf'))
+    if not pdf_files:
+        print(f"❌ Error: No PDF files found in '{folder_path_to_pdfs}'")
+        exit(1)
+    
+    num_pdfs = len(pdf_files)
+    
+    # Get number of clusters with smart defaults
+    default_clusters = min(3, num_pdfs)
+    clusters_input = input(f"Number of clusters (default {default_clusters}, max {num_pdfs}): ").strip()
+    
+    try:
+        n_clusters = int(clusters_input) if clusters_input else default_clusters
+    except ValueError:
+        print(f"⚠️  Invalid input. Using default: {default_clusters} clusters")
+        n_clusters = default_clusters
     
     # Extract text from PDFs
     texts = extract_text_from_pdfs(folder_path_to_pdfs, use_parallel=True)
     if not texts:
-        exit()
+        exit(1)
     
-    # Vectorization and scaling
-    vectorizer = TfidfVectorizer(stop_words='english', max_df=0.8, min_df=2, max_features=1000)
+    # Process and cluster
+    df_clusters = process_and_cluster_pdfs(folder_path_to_pdfs, n_clusters=n_clusters, use_parallel=True)
+    
+    if df_clusters.empty:
+        print("❌ Failed to process PDFs.")
+        exit(1)
+    
+    # Vectorization for additional analysis
+    min_df = 1 if num_pdfs < 5 else 2
+    max_df = 0.9 if num_pdfs < 5 else 0.8
+    vectorizer = TfidfVectorizer(stop_words='english', max_df=max_df, min_df=min_df, max_features=1000)
     X_tfidf = vectorizer.fit_transform(texts)
     scaler = StandardScaler(with_mean=False)
     X_scaled = hstack([X_tfidf, scaler.fit_transform(X_tfidf)])
     
     # Clustering
-    kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
-    clusters = kmeans.fit_predict(X_scaled)
-    
-    df_clusters = pd.DataFrame({'text': texts, 'cluster': clusters})
+    clusters = df_clusters['cluster'].values
     
     # Analysis of results
     stats = get_cluster_stats(df_clusters)
